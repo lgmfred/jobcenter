@@ -92,6 +92,11 @@ defmodule JobCenter do
     GenServer.cast(pid, {:job_done, int})
   end
 
+  @spec statistics(pid()) :: map
+  def statistics(pid) do
+    GenServer.call(pid, :get_statistics)
+  end
+
   @spec get_queue_list(pid) :: [tuple]
   def get_queue_list(pid) do
     GenServer.call(pid, :get_queue_list)
@@ -120,13 +125,26 @@ defmodule JobCenter do
   @impl true
   def handle_call({:add_job, fun}, _from, %{id: id} = state) do
     new_state =
-      Map.update!(state, :id, &(&1 + 1))
+      state
+      |> Map.update!(:id, &(&1 + 1))
       |> Map.update!(:queue, &Qex.push(&1, {id, fun}))
 
     {:reply, id, new_state}
   end
 
+  def handle_call(:get_statistics, _from, state) do
+    %{queue: queue, progress: progress, done: done} = state
+    new_queue = Enum.to_list(queue)
+
+    reply =
+      %{queue: new_queue, progress: progress, done: done}
+      |> IO.inspect(label: "Reply")
+
+    {:reply, reply, state}
+  end
+
   def handle_call(:work_wanted, _from, state) do
+    # ref = Process.monitor(pid)
     queue = Map.fetch!(state, :queue)
 
     case Qex.pop(queue) do
@@ -135,7 +153,9 @@ defmodule JobCenter do
 
       {{:value, work}, new_queue} ->
         new_state =
-          Map.update!(state, :progress, &[work | &1])
+          state
+          |> Map.update!(:progress, &[work | &1])
+          # |> Map.update!(:progress, fn exist -> [work | exist] end)
           |> Map.replace!(:queue, new_queue)
 
         {:reply, work, new_state}
@@ -165,7 +185,8 @@ defmodule JobCenter do
         progress = List.delete(list, work)
 
         new_state =
-          Map.update!(state, :progress, fn _elem -> progress end)
+          state
+          |> Map.update!(:progress, fn _elem -> progress end)
           |> Map.update!(:done, &[work | &1])
 
         {:noreply, new_state}
