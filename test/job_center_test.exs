@@ -59,12 +59,33 @@ defmodule JobCenterTest do
       queue = [{1, fun}, {2, fun}]
       {:ok, pid} = JobCenter.start_link(id: 3, queue: queue)
       {no1, _} = JobCenter.work_wanted(pid)
-      {mo2, _} = JobCenter.work_wanted(pid)
+      {no2, _} = JobCenter.work_wanted(pid)
 
       assert JobCenter.job_done(pid, no1) == :ok
       assert JobCenter.get_done_list(pid) == [{1, fun}]
-      assert JobCenter.job_done(pid, mo2) == :ok
+      assert JobCenter.job_done(pid, no2) == :ok
       assert JobCenter.get_done_list(pid) == [{2, fun}, {1, fun}]
+    end
+  end
+
+  describe "statistics/1" do
+    test "with initial state" do
+      {:ok, pid} = JobCenter.start_link()
+      stats = %{queue: [], progress: [], done: []}
+
+      assert JobCenter.statistics(pid) == stats
+    end
+
+    test "stats not empty lists" do
+      fun = fn -> :stats end
+      queue = [{1, fun}, {2, fun}, {3, fun}]
+      {:ok, pid} = JobCenter.start_link(id: 4, queue: queue)
+      {id1, _} = JobCenter.work_wanted(pid)
+      {_id2, _} = JobCenter.work_wanted(pid)
+      :ok = JobCenter.job_done(pid, id1)
+      stats = %{queue: [{3, fun}], progress: [{2, fun}], done: [{1, fun}]}
+
+      assert JobCenter.statistics(pid) == stats
     end
   end
 end
