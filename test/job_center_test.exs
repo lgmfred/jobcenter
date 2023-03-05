@@ -88,4 +88,57 @@ defmodule JobCenterTest do
       assert JobCenter.statistics(pid) == stats
     end
   end
+
+  describe "monitor workers" do
+    ## If a worker dies, jobs it was doing are returned to the queue
+    test "one worker dies" do
+      fun = fn -> :one_worker end
+      queue = for n <- 1..3, do: {n, fun}
+      {:ok, pid} = JobCenter.start_link(id: 4, queue: queue)
+      worker_pid = spawn(fn -> req3_do1_and_die(pid) end)
+      Process.sleep(100)
+      %{queue: q1, progress: p1, done: d1} = JobCenter.statistics(pid)
+      true = Process.exit(worker_pid, :kill)
+      Process.sleep(100)
+      %{queue: q2, progress: p2, done: d2} = JobCenter.statistics(pid)
+
+      assert q1 == []
+      assert p1 == [{3, fun}, {1, fun}]
+      assert d1 == [{2, fun}]
+      assert q2 == [{3, fun}, {1, fun}]
+      assert p2 == []
+      assert d2 == [{2, fun}]
+    end
+
+    test "more than one workers die" do
+      fun = fn -> :more_worker end
+      queue = for n <- 1..9, do: {n, fun}
+      {:ok, pid} = JobCenter.start_link(id: 10, queue: queue)
+      worker1 = spawn(fn -> req3_do1_and_die(pid) end)
+      Process.sleep(100)
+      worker2 = spawn(fn -> req3_do1_and_die(pid) end)
+      Process.sleep(100)
+      worker3 = spawn(fn -> req3_do1_and_die(pid) end)
+      Process.sleep(100)
+      %{queue: q1, progress: p1, done: d1} = JobCenter.statistics(pid)
+      for w_pid <- [worker1, worker2, worker3], do: Process.exit(w_pid, :kill)
+      Process.sleep(100)
+      %{queue: q2, progress: p2, done: d2} = JobCenter.statistics(pid)
+      expected1 = [{9, fun}, {7, fun}, {6, fun}, {4, fun}, {3, fun}, {1, fun}]
+
+      assert q1 == []
+      assert p1 == expected1
+      assert d1 == [{8, fun}, {5, fun}, {2, fun}]
+      assert q2 == expected1
+      assert(p2 == [])
+      assert d2 == [{8, fun}, {5, fun}, {2, fun}]
+    end
+  end
+
+  ## Test Helper Functions
+  defp req3_do1_and_die(pid) do
+    [_, {id2, _fun}, _] = for _n <- 1..3, do: JobCenter.work_wanted(pid)
+    JobCenter.job_done(pid, id2)
+    Process.sleep(5000)
+  end
 end

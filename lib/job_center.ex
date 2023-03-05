@@ -8,7 +8,8 @@ defmodule JobCenter do
           :id => non_neg_integer,
           :queue => Qex.t(tuple),
           :progress => list,
-          :done => list
+          :done => list,
+          :refs => list
         }
 
   ## Client APIs
@@ -92,6 +93,16 @@ defmodule JobCenter do
     GenServer.cast(pid, {:job_done, int})
   end
 
+  @doc """
+  This reports the status of the jobs in the queue and of jobs that are
+  in progress and that have been done.
+
+  ## Examples
+
+      iex> {:ok, pid} = JobCenter.start_link()
+      iex> JobCenter.statistics(pid)
+      %{queue: [], progress: [], done: []}
+  """
   @spec statistics(pid()) :: map
   def statistics(pid) do
     GenServer.call(pid, :get_statistics)
@@ -118,7 +129,7 @@ defmodule JobCenter do
   def init(opts) do
     queue = Keyword.get(opts, :queue, [])
     id = Keyword.get(opts, :id, 1)
-    init_state = %{id: id, queue: Qex.new(queue), progress: [], done: []}
+    init_state = %{id: id, queue: Qex.new(queue), progress: [], done: [], refs: []}
     {:ok, init_state}
   end
 
@@ -136,26 +147,26 @@ defmodule JobCenter do
     %{queue: queue, progress: progress, done: done} = state
     new_queue = Enum.to_list(queue)
 
-    reply =
-      %{queue: new_queue, progress: progress, done: done}
-      |> IO.inspect(label: "Reply")
+    reply = %{queue: new_queue, progress: progress, done: done}
+    # |> IO.inspect(label: "Reply")
 
     {:reply, reply, state}
   end
 
-  def handle_call(:work_wanted, _from, state) do
-    # ref = Process.monitor(pid)
+  def handle_call(:work_wanted, {pid, _tag}, state) do
     queue = Map.fetch!(state, :queue)
 
     case Qex.pop(queue) do
       {:empty, _} ->
         {:reply, :no_work, state}
 
-      {{:value, work}, new_queue} ->
+      {{:value, {id, _} = work}, new_queue} ->
+        ref = Process.monitor(pid)
+
         new_state =
           state
           |> Map.update!(:progress, &[work | &1])
-          # |> Map.update!(:progress, fn exist -> [work | exist] end)
+          |> Map.update!(:refs, &[{ref, id, pid} | &1])
           |> Map.replace!(:queue, new_queue)
 
         {:reply, work, new_state}
@@ -176,20 +187,50 @@ defmodule JobCenter do
   end
 
   @impl true
-  def handle_cast({:job_done, int}, %{progress: list} = state) do
+  def handle_cast({:job_done, int}, %{progress: list, refs: refs} = state) do
     case List.keyfind(list, int, 0) do
       nil ->
         {:noreply, state}
 
-      {_int, _} = work ->
+      {^int, _} = work ->
         progress = List.delete(list, work)
+
+        {ref, ^int, _pid} = List.keyfind!(refs, int, 1)
+        reference = List.keydelete(refs, int, 1)
+        true = Process.demonitor(ref, [:flush])
 
         new_state =
           state
           |> Map.update!(:progress, fn _elem -> progress end)
+          |> Map.update!(:refs, fn _elem -> reference end)
           |> Map.update!(:done, &[work | &1])
 
         {:noreply, new_state}
+    end
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+    %{queue: queue, progress: progress, refs: refs} = state
+
+    case List.keyfind(refs, ref, 0) do
+      {^ref, id, _pid} ->
+        work = List.keyfind!(progress, id, 0)
+        new_refs = List.keydelete(refs, ref, 0)
+        new_progress = List.keydelete(progress, id, 0)
+        new_queue = Qex.push_front(queue, work)
+
+        new_state =
+          state
+          |> Map.update!(:queue, fn _elem -> new_queue end)
+          |> Map.update!(:progress, fn _elem -> new_progress end)
+          |> Map.update!(:refs, fn _elem -> new_refs end)
+
+        {:noreply, new_state}
+
+      nil ->
+        # We don't give a damn! (NOT our responsibility!)
+        {:noreply, state}
     end
   end
 end
