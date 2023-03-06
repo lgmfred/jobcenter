@@ -34,17 +34,17 @@ iex(4)> JobCenter.get_done_list(pid)
 Lets add three jobs to queue and check the three lists.
 
 ```elixir
-iex(5)> JobCenter.add_job(pid, fn -> :one end)
+iex(5)> JobCenter.add_job(pid, fn -> :one end, 3)
 1
-iex(6)> JobCenter.add_job(pid, fn -> :two end)
+iex(6)> JobCenter.add_job(pid, fn -> :two end, 2)
 2
-iex(7)> JobCenter.add_job(pid, fn -> :three end) 
+iex(7)> JobCenter.add_job(pid, fn -> :three end, 1) 
 3
 iex(8)> JobCenter.get_queue_list(pid)           
 [
-  {1, #Function<45.65746770/0 in :erl_eval.expr/5>},
-  {2, #Function<45.65746770/0 in :erl_eval.expr/5>},
-  {3, #Function<45.65746770/0 in :erl_eval.expr/5>}
+  {1, #Function<45.65746770/0 in :erl_eval.expr/5>, 3},
+  {2, #Function<45.65746770/0 in :erl_eval.expr/5>, 2},
+  {3, #Function<45.65746770/0 in :erl_eval.expr/5>, 1}
 ]
 iex(9)> JobCenter.get_progress_list(pid)        
 []
@@ -55,13 +55,13 @@ How about we request for 2 jobs, and tell the server we're done with one.
 
 ```elixir
 iex(11)> {id1, fun1} = JobCenter.work_wanted(pid)
-{1, #Function<45.65746770/0 in :erl_eval.expr/5>}
+{1, #Function<45.65746770/0 in :erl_eval.expr/5>, 3}
 iex(12)> {id2, fun2} = JobCenter.work_wanted(pid)
-{2, #Function<45.65746770/0 in :erl_eval.expr/5>}
+{2, #Function<45.65746770/0 in :erl_eval.expr/5>, 2}
 iex(13)> JobCenter.get_progress_list(pid)        
 [
-  {2, #Function<45.65746770/0 in :erl_eval.expr/5>},
-  {1, #Function<45.65746770/0 in :erl_eval.expr/5>}
+  {2, #Function<45.65746770/0 in :erl_eval.expr/5>, 2},
+  {1, #Function<45.65746770/0 in :erl_eval.expr/5>, 3}
 ]
 iex(14)> JobCenter.job_done(pid, id1) 
 :ok
@@ -70,11 +70,11 @@ Current state of the server.
 
 ```elixir
 iex(15)> JobCenter.get_done_list(pid)            
-[{1, #Function<45.65746770/0 in :erl_eval.expr/5>}]
+[{1, #Function<45.65746770/0 in :erl_eval.expr/5>, 3}]
 iex(16)> JobCenter.get_progress_list(pid)        
-[{2, #Function<45.65746770/0 in :erl_eval.expr/5>}]
+[{2, #Function<45.65746770/0 in :erl_eval.expr/5>, 2}]
 iex(17)> JobCenter.get_queue_list(pid)
-{3, #Function<45.65746770/0 in :erl_eval.expr/5>}
+{3, #Function<45.65746770/0 in :erl_eval.expr/5>, 1}
 ```
 
 ## Concepts learned

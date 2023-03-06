@@ -31,24 +31,25 @@ defmodule JobCenter do
   end
 
   @doc """
-  Add a job `fun` to the job queue. Return a positive integer job number.
+  Add a job `fun` and `time` to do it to the job queue. Return a positive
+  integer job number.
 
   ## Examples
 
       iex> {:ok, pid} = JobCenter.start_link()
-      iex> JobCenter.add_job(pid, fn -> :one end)
+      iex> JobCenter.add_job(pid, fn -> :one end, 2)
       1
-      iex> JobCenter.add_job(pid, fn -> :two end)
+      iex> JobCenter.add_job(pid, fn -> :two end, 1)
       2
   """
-  @spec add_job(pid, fun) :: non_neg_integer
-  def add_job(pid, fun) do
-    GenServer.call(pid, {:add_job, fun})
+  @spec add_job(pid, fun, non_neg_integer) :: non_neg_integer
+  def add_job(pid, fun, time) do
+    GenServer.call(pid, {:add_job, fun, time})
   end
 
   @doc """
   Used to request for work. If there are jobs in the queue, a tuple
-  `{job_number, fun}` is returned. If there are no jobs in the queue,
+  `{job_number, fun, time}` is returned. If there are no jobs in the queue,
   `no_work` is returned.
 
   The system is fair, meaning that jobs are handed out in the order they
@@ -59,16 +60,14 @@ defmodule JobCenter do
 
       iex> fun1 = fn -> :one end
       iex> fun2 = fn -> :two end
-      iex> opts = [id: 3, queue: [{1, fun1}, {2, fun2}]]
+      iex> opts = [id: 3, queue: [{1, fun1, 2}, {2, fun2, 1}]]
       iex> {:ok, pid} = JobCenter.start_link(opts)
-      iex> JobCenter.add_job(pid, fun1)
-      iex> JobCenter.add_job(pid, fun2)
       iex> JobCenter.work_wanted(pid)
-      {1, fun1}
+      {1, fun1, 2}
       iex> JobCenter.work_wanted(pid)
-      {2, fun2}
+      {2, fun2, 1}
   """
-  @spec work_wanted(pid) :: {non_neg_integer, fun} | :no_work
+  @spec work_wanted(pid) :: {non_neg_integer, fun, non_neg_integer} | :no_work
   def work_wanted(pid) do
     GenServer.call(pid, :work_wanted)
   end
@@ -80,9 +79,8 @@ defmodule JobCenter do
   ## Examples
 
       iex> fun = fn -> :one end
-      iex> {:ok, pid} = JobCenter.start_link([id: 2, queue: [{1, fun}]])
-      iex> {id, fun} = JobCenter.work_wanted(pid)
-      {1, fun}
+      iex> {:ok, pid} = JobCenter.start_link([id: 2, queue: [{1, fun, 2}]])
+      iex> {id, ^fun, 2} = JobCenter.work_wanted(pid)
       iex> JobCenter.job_done(pid, id)
       :ok
       iex> JobCenter.job_done(pid, :invalid_id)
@@ -108,17 +106,17 @@ defmodule JobCenter do
     GenServer.call(pid, :get_statistics)
   end
 
-  @spec get_queue_list(pid) :: [tuple]
+  @spec get_queue_list(pid) :: [{non_neg_integer, fun, non_neg_integer}]
   def get_queue_list(pid) do
     GenServer.call(pid, :get_queue_list)
   end
 
-  @spec get_progress_list(pid) :: [tuple]
+  @spec get_progress_list(pid) :: [{non_neg_integer, fun, non_neg_integer}]
   def get_progress_list(pid) do
     GenServer.call(pid, :get_progress_list)
   end
 
-  @spec get_done_list(pid) :: [tuple]
+  @spec get_done_list(pid) :: [{non_neg_integer, fun, non_neg_integer}]
   def get_done_list(pid) do
     GenServer.call(pid, :get_done_list)
   end
@@ -134,11 +132,11 @@ defmodule JobCenter do
   end
 
   @impl true
-  def handle_call({:add_job, fun}, _from, %{id: id} = state) do
+  def handle_call({:add_job, fun, time}, _from, %{id: id} = state) do
     new_state =
       state
       |> Map.update!(:id, &(&1 + 1))
-      |> Map.update!(:queue, &Qex.push(&1, {id, fun}))
+      |> Map.update!(:queue, &Qex.push(&1, {id, fun, time}))
 
     {:reply, id, new_state}
   end
@@ -160,7 +158,7 @@ defmodule JobCenter do
       {:empty, _} ->
         {:reply, :no_work, state}
 
-      {{:value, {id, _} = work}, new_queue} ->
+      {{:value, {id, _, _time} = work}, new_queue} ->
         ref = Process.monitor(pid)
 
         new_state =
@@ -192,7 +190,7 @@ defmodule JobCenter do
       nil ->
         {:noreply, state}
 
-      {^int, _} = work ->
+      {^int, _, _time} = work ->
         progress = List.delete(list, work)
 
         {ref, ^int, _pid} = List.keyfind!(refs, int, 1)
