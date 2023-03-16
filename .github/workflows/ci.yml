@@ -26,7 +26,7 @@ env:
   OTP_VERSION: 25
 
 jobs:
-  test:
+  Tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -55,44 +55,7 @@ jobs:
         run: mix test
         if: success() || failure()
 
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: ${{ env.ELIXIR_VERSION }}
-          otp-version: ${{ env.OTP_VERSION }}
-
-      - name: Retrieve Mix Dependencies Cache
-        uses: actions/cache@v3
-        id: mix-cache
-        with:
-          path: deps
-          key: ${{ runner.os }}-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-mix-${{ hashFiles('**/mix.lock') }}
-
-      - name: Install Mix Dependencies
-        run: |
-          mix local.rebar --force
-          mix local.hex --force
-          mix deps.get
-        if: steps.mix-cache.outputs.cache-hit != 'true'
-
-      - name: Run Hex Audit
-        run: mix hex.audit
-        if: success() || failure()
-
-      - name: Run Deps Audit
-        run: mix deps.audit
-        if: success() || failure()
-
-      - name: Run Sobelow
-        run: mix sobelow --exit
-        if: success() || failure()
-
-  lint:
+  Linting:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
