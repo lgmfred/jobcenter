@@ -1,7 +1,8 @@
 Job center:- A simple job management service 
 ============================================
 
-![Build and Test](https://github.com/lgmfred/jobcenter/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/lgmfred/jobcenter/actions/workflows/ci.yml/badge.svg)
+![Docs](https://github.com/lgmfred/jobcenter/actions/workflows/docs.yml/badge.svg)
 
 A terrible solution to the **Chapter 22** exercise in Joe's [Programming Erlang (2nd edition)](https://pragprog.com/titles/jaerlang2/programming-erlang-2nd-edition/). _Read the book if you haven't already. It's good!_
 
@@ -83,4 +84,5 @@ iex(17)> JobCenter.get_queue_list(pid)
 - GenServers (and how to test them)
 - Testing and TDD
 - Documentation and Static Analysis (Doctests, Typespecs, ExDoc and Credo)
+- CI/CD with GitHub Actions
 
